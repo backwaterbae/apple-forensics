@@ -1,0 +1,203 @@
+# macOS False Alarm / Whitelist Signatures
+# Legitimate Apple services and processes that may trigger security signatures
+# Format: PATTERN|REASON:why it's legitimate|PROCESS:expected process name|PATH:expected file path
+
+# === Apple Security Services ===
+
+# XProtect - Apple's built-in malware detection
+XProtectPayloads|REASON:Apple's malware signature database - legitimate security component|PROCESS:XProtect,XProtectPluginService|PATH:/System/Library/CoreServices/XProtect.bundle
+EXACT:Project Name:     XProtectPayloads|REASON:Apple XProtect compilation project reference
+XProtectService|REASON:Apple malware scanning service
+XProtectFramework|REASON:Apple malware detection framework
+com.apple.XProtect|REASON:Apple XProtect bundle identifier
+
+# === Input Method & Localization ===
+
+# imklaunchagent - Input Method Kit Launch Agent
+PARTIAL:imklaunchagent|REASON:Apple's Input Method Kit launch agent for keyboard input methods|PROCESS:imklaunchagent|PATH:/System/Library/Frameworks/InputMethodKit.framework/Versions/A/Resources/imklaunchagent
+PARTIAL:com.apple.imklaunchagent|REASON:Bundle ID for Apple's Input Method Kit launch agent
+InputMethodKit|REASON:Apple framework for keyboard input methods
+
+# === Safari & WebKit ===
+
+# Safari Launch Agents
+PARTIAL:SafariLaunchAgent|REASON:Apple Safari browser launch agent|PROCESS:SafariLaunchAgent|PATH:/System/Volumes/Preboot/Cryptexes/App/usr/libexec/SafariLaunchAgent
+com.apple.Safari|REASON:Safari browser bundle identifier
+SafariPluginAgent|REASON:Safari plugin host process
+SafariForWebKitDevelopment|REASON:Safari development build
+
+# === System Launch Agents & Daemons ===
+
+# Generic LaunchAgent/LaunchDaemon when in Apple system context
+# Note: This uses PARTIAL to catch "launchagent" signature in legitimate Apple contexts
+PARTIAL:com.apple.|REASON:Apple bundle identifier - legitimate system component
+PARTIAL:/System/Library/|REASON:Apple system directory - legitimate file path
+PARTIAL:/usr/libexec/|REASON:Apple system executables directory
+
+# These are legitimate Apple launch agents that may trigger "LaunchAgent" signatures
+com.apple.AmbientDisplayAgent|REASON:Apple ambient display management
+com.apple.accessibility.heard|REASON:Apple accessibility audio services
+com.apple.AirPlayUIAgent|REASON:Apple AirPlay user interface agent
+com.apple.AirPortBaseStationAgent|REASON:Apple WiFi base station management
+com.apple.appleseed.seedusaged|REASON:Apple beta software feedback daemon
+com.apple.SubmitDiagInfo|REASON:Apple diagnostics submission agent
+com.apple.photoanalysisd|REASON:Apple Photos machine learning analysis
+com.apple.cloudd|REASON:Apple iCloud daemon
+com.apple.notificationcenterui|REASON:Apple notification center
+com.apple.UserEventAgent-System|REASON:Apple system event handling
+
+# === Apple Security & Privacy ===
+
+# Gatekeeper
+com.apple.security.Gatekeeper|REASON:Apple code signing and app notarization enforcement
+syspolicyd|REASON:Apple system policy daemon for Gatekeeper
+com.apple.trustd|REASON:Apple certificate trust evaluation daemon
+
+# System Integrity Protection
+com.apple.security.sip|REASON:Apple System Integrity Protection
+rootless|REASON:Apple SIP (System Integrity Protection) also known as rootless
+
+# === System Management ===
+
+# Launch Services
+com.apple.LaunchServices|REASON:Apple application launching framework
+lsd|REASON:Launch Services daemon - manages app associations|PROCESS:lsd
+
+# Core Services
+com.apple.CoreServices|REASON:Apple core system services framework
+coreservicesd|REASON:Core Services daemon|PROCESS:coreservicesd
+
+# Software Update
+com.apple.SoftwareUpdate|REASON:Apple software update agent
+softwareupdated|REASON:Apple software update daemon|PROCESS:softwareupdated
+
+# === Spotlight & Search ===
+
+com.apple.metadata.mds|REASON:Apple Spotlight metadata server
+mds_stores|REASON:Spotlight metadata storage|PROCESS:mds_stores
+mdworker|REASON:Spotlight metadata import worker|PROCESS:mdworker
+
+# === System Diagnostics ===
+
+# spindump itself
+spindump|REASON:Apple system diagnostic tool that creates spindump reports|PROCESS:spindump|PATH:/usr/sbin/spindump
+com.apple.spindump|REASON:Apple spindump diagnostic service
+
+# Other Apple diagnostics
+sysdiagnose|REASON:Apple system diagnostic collection tool
+ReportCrash|REASON:Apple crash reporter|PROCESS:ReportCrash
+com.apple.CrashReporterSupportHelper|REASON:Apple crash reporting support
+
+# === Virtualization & Developer Tools ===
+
+# Hypervisor framework
+com.apple.Hypervisor|REASON:Apple Hypervisor framework for virtualization
+com.apple.audio.driver|REASON:Apple audio driver framework
+
+# Xcode related
+Xcode|REASON:Apple development environment
+com.apple.dt.Xcode|REASON:Apple Xcode bundle identifier
+xcrun|REASON:Apple Xcode command line tool runner
+
+# === Network & Communication ===
+
+# Bonjour
+mDNSResponder|REASON:Apple Bonjour/mDNS network discovery|PROCESS:mDNSResponder
+com.apple.mDNSResponder|REASON:Apple mDNSResponder service
+
+# Network framework
+com.apple.nsurlsessiond|REASON:Apple NSURLSession networking daemon
+nsurlsessiond|REASON:Apple URL session daemon|PROCESS:nsurlsessiond
+
+# === iCloud & Apple Services ===
+
+# iCloud services
+bird|REASON:Apple iCloud Drive sync daemon|PROCESS:bird
+cloudd|REASON:Apple iCloud daemon|PROCESS:cloudd
+com.apple.bird|REASON:Apple iCloud Drive service
+com.apple.cloudd|REASON:Apple iCloud service daemon
+iCloudDrive|REASON:Apple iCloud Drive service
+
+# Find My
+com.apple.findmy|REASON:Apple Find My service
+FindMyMac|REASON:Apple Find My Mac service
+
+# === Media & Photos ===
+
+photoanalysisd|REASON:Apple Photos machine learning daemon|PROCESS:photoanalysisd
+com.apple.photoanalysisd|REASON:Apple Photos analysis service
+photolibraryd|REASON:Apple Photos library daemon|PROCESS:photolibraryd
+
+# === Power Management ===
+
+powerd|REASON:Apple power management daemon|PROCESS:powerd
+com.apple.powerd|REASON:Apple power daemon service
+
+# === Kernel Extensions (Legitimate) ===
+
+# Apple kernel extensions
+com.apple.driver|REASON:Apple kernel driver prefix
+com.apple.iokit|REASON:Apple IOKit framework drivers
+com.apple.kext|REASON:Apple kernel extension prefix
+
+# === Window Management ===
+
+WindowServer|REASON:Apple window server - core graphics display|PROCESS:WindowServer
+Dock|REASON:Apple Dock application|PROCESS:Dock
+com.apple.WindowServer|REASON:Apple window server service
+com.apple.dock|REASON:Apple Dock service
+
+# === Accessibility ===
+
+VoiceOver|REASON:Apple screen reader for accessibility|PROCESS:VoiceOver
+com.apple.VoiceOver|REASON:Apple VoiceOver service
+UniversalAccessAuthWarn|REASON:Apple accessibility permission warning
+
+# === Continuity & Handoff ===
+
+sharingd|REASON:Apple Continuity/Handoff/AirDrop service|PROCESS:sharingd
+com.apple.sharingd|REASON:Apple sharing daemon
+
+# === Time Machine ===
+
+backupd|REASON:Apple Time Machine backup daemon|PROCESS:backupd
+com.apple.backupd|REASON:Apple backup daemon service
+
+# === App Store ===
+
+storeaccountd|REASON:Apple App Store account daemon|PROCESS:storeaccountd
+com.apple.storeaccountd|REASON:Apple Store account service
+appstoreagent|REASON:Apple App Store agent|PROCESS:appstoreagent
+
+# === Printing ===
+
+cupsd|REASON:Apple CUPS printing daemon|PROCESS:cupsd
+com.apple.cups|REASON:Apple printing service
+
+# === System Extensions (macOS 10.15+) ===
+
+com.apple.system-extension|REASON:Apple system extension framework
+sysextd|REASON:Apple system extensions daemon|PROCESS:sysextd
+
+# === NOTES FOR FORENSIC ANALYSIS ===
+
+# How to verify legitimacy:
+# 1. Check codesigning: codesign -dv --verbose=4 /path/to/binary
+# 2. Verify path is in /System/Library or /usr/libexec
+# 3. Check bundle ID matches com.apple.* pattern
+# 4. Verify code signature is from Apple Inc.
+# 5. Check binary is on sealed system volume (macOS 10.15+)
+
+# Suspicious indicators even if name matches:
+# - Path outside /System/Library, /Library, or /usr
+# - No Apple code signature
+# - Unexpected parent process
+# - Unusual command line arguments
+# - Network connections to non-Apple domains
+# - Modified after system install date
+
+# When in doubt:
+# - Check process hash against known-good database
+# - Verify with: spctl -a -v /path/to/app
+# - Check system_profiler SPInstallHistoryDataType
+# - Review with: launchctl list | grep com.apple
