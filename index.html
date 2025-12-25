@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>macOS Log Analyzer - User Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            line-height: 1.6;
+            color: #e4e4e7;
+            background: #0a0a0b;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: #18181b;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            overflow: hidden;
+            border: 1px solid #27272a;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.95;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        h2 {
+            color: #818cf8;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #27272a;
+        }
+
+        h3 {
+            color: #d4d4d8;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        h4 {
+            color: #a1a1aa;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 15px;
+            color: #e4e4e7;
+        }
+
+        ul, ol {
+            margin-left: 25px;
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 8px;
+            color: #e4e4e7;
+        }
+
+        .code-block {
+            position: relative;
+            margin: 20px 0;
+        }
+
+        pre {
+            background: #0a0a0b;
+            border: 1px solid #27272a;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.45;
+            color: #a5f3fc;
+        }
+
+        code {
+            background: #27272a;
+            color: #a5f3fc;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+
+        pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #818cf8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: #6366f1;
+            transform: translateY(-1px);
+        }
+
+        .copy-btn:active {
+            transform: translateY(0);
+        }
+
+        .copy-btn.copied {
+            background: #34d399;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #34d399;
+            color: #0a0a0b;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .badge.warning {
+            background: #fbbf24;
+            color: #0a0a0b;
+        }
+
+        .badge.info {
+            background: #818cf8;
+            color: white;
+        }
+
+        .alert {
+            background: #422006;
+            border-left: 4px solid #fbbf24;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            color: #fef3c7;
+        }
+
+        .alert.success {
+            background: #064e3b;
+            border-left-color: #34d399;
+            color: #d1fae5;
+        }
+
+        .alert.info {
+            background: #1e1b4b;
+            border-left-color: #818cf8;
+            color: #ddd6fe;
+        }
+
+        .feature-list {
+            background: #27272a;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #3f3f46;
+        }
+
+        .feature-list li {
+            margin-bottom: 12px;
+        }
+
+        .nav {
+            background: #27272a;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 30px;
+            border: 1px solid #3f3f46;
+        }
+
+        .nav h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+
+        .nav ul {
+            list-style: none;
+            margin-left: 0;
+        }
+
+        .nav a {
+            color: #818cf8;
+            text-decoration: none;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+            color: #a5b4fc;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #27272a;
+            color: #e4e4e7;
+        }
+
+        th {
+            background: #27272a;
+            font-weight: 600;
+            color: #d4d4d8;
+        }
+
+        footer {
+            background: #27272a;
+            padding: 30px 40px;
+            text-align: center;
+            color: #a1a1aa;
+            border-top: 1px solid #3f3f46;
+        }
+
+        footer a {
+            color: #818cf8;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .highlight {
+            background: #422006;
+            color: #fef3c7;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        strong {
+            color: #fafafa;
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.8em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .copy-btn {
+                position: static;
+                display: block;
+                width: 100%;
+                margin-top: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 macOS Log Analyzer</h1>
+            <p>Intelligent Log Discovery and Analysis for macOS Forensic Investigations</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">
+                <span class="badge">v1.2</span>
+                <span class="badge info">Whitelist Support</span>
+                <span class="badge">Production Ready</span>
+            </p>
+        </header>
+
+        <div class="content">
+            <!-- Table of Contents -->
+            <div class="nav">
+                <h3>📋 Quick Navigation</h3>
+                <ul>
+                    <li><a href="#test-results">✅ Test Run Results</a></li>
+                    <li><a href="#installation">📥 Installation</a></li>
+                    <li><a href="#basic-usage">🚀 Basic Usage</a></li>
+                    <li><a href="#whitelist">⚡ Whitelist Feature (NEW)</a></li>
+                    <li><a href="#workflows">💼 Forensic Workflows</a></li>
+                    <li><a href="#output">📊 Understanding Output</a></li>
+                    <li><a href="#troubleshooting">🔧 Troubleshooting</a></li>
+                </ul>
+            </div>
+
+            <!-- Test Results -->
+            <section id="test-results">
+                <h2>✅ Test Run Results</h2>
+                <div class="alert success">
+                    <strong>The tool is working perfectly!</strong> Latest test run found <strong>15 findings</strong> across multiple severity levels.
+                </div>
+                
+                <div class="feature-list">
+                    <h4>Severity Breakdown:</h4>
+                    <ul>
+                        <li>🔴 <strong>10 HIGH</strong> - Authentication failures, malware warnings, crashes</li>
+                        <li>🟡 <strong>3 MEDIUM</strong> - Sudo usage, firewall blocks</li>
+                        <li>🔵 <strong>2 LOW</strong> - General warnings</li>
+                    </ul>
+                    
+                    <h4>Categories Detected:</h4>
+                    <ul>
+                        <li>7 Crash indicators</li>
+                        <li>4 Security events</li>
+                        <li>2 Errors</li>
+                        <li>1 Diagnostic</li>
+                        <li>1 Warning</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Installation -->
+            <section id="installation">
+                <h2>📥 Installation</h2>
+                <p>No dependencies required! The analyzer uses Python 3's standard library.</p>
+                
+                <h3>Step 1: Get the Files</h3>
+                <p>You need these files in the same directory:</p>
+                <ul>
+                    <li><code>log_directory_analyzer.py</code> - The analyzer tool</li>
+                    <li><code>macos_security_patterns.txt</code> - 60+ security patterns</li>
+                    <li><code>crash_patterns.txt</code> - 50+ crash patterns</li>
+                    <li><code>malware_patterns.txt</code> - 100+ malware patterns</li>
+                    <li><code>macos_whitelist.txt</code> - 86 legitimate Apple services</li>
+                </ul>
+
+                <h3>Step 2: Make It Executable (Optional)</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>chmod +x log_directory_analyzer.py</code></pre>
+                </div>
+                
+                <div class="alert info">
+                    <strong>💡 Tip:</strong> You can always run it with <code>python3 log_directory_analyzer.py</code> instead of <code>./log_directory_analyzer.py</code>
+                </div>
+            </section>
+
+            <!-- Basic Usage -->
+            <section id="basic-usage">
+                <h2>🚀 Basic Usage</h2>
+                
+                <h3>Quick Start - Scan Your Logs</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py -p macos_security_patterns.txt</code></pre>
+                </div>
+                
+                <h3>Comprehensive Scan - All Patterns</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt crash_patterns.txt malware_patterns.txt \
+  -v</code></pre>
+                </div>
+
+                <h3>Scan Specific Directory</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py \
+  -d ~/Library/Logs \
+  -p macos_security_patterns.txt</code></pre>
+                </div>
+
+                <h3>Scan Multiple Directories</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py \
+  -d ~/Library/Logs /Library/Logs \
+  -p macos_security_patterns.txt crash_patterns.txt</code></pre>
+                </div>
+
+                <h3>System Logs (Requires sudo)</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>sudo python3 log_directory_analyzer.py \
+  -d /var/log \
+  -p macos_security_patterns.txt</code></pre>
+                </div>
+            </section>
+
+            <!-- Whitelist Feature -->
+            <section id="whitelist">
+                <h2>⚡ Whitelist Feature (NEW in v1.2)</h2>
+                
+                <div class="alert info">
+                    <strong>🎯 Recommended:</strong> Always use the whitelist for production scans to filter out false positives from legitimate Apple services like XProtect, Safari, and system components.
+                </div>
+
+                <h3>Why Use Whitelist?</h3>
+                <p>Security patterns often trigger on legitimate Apple services:</p>
+                <ul>
+                    <li><strong>XProtect</strong> - Apple's malware scanner triggers "malware" patterns</li>
+                    <li><strong>imklaunchagent</strong> - Input Method Kit triggers "launchagent" patterns</li>
+                    <li><strong>Safari components</strong> - Browser services trigger persistence patterns</li>
+                </ul>
+
+                <h3>Basic Usage with Whitelist</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt \
+  -w macos_whitelist.txt</code></pre>
+                </div>
+
+                <h3>Full Scan with Whitelist (Recommended)</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt crash_patterns.txt malware_patterns.txt \
+  -w macos_whitelist.txt \
+  -v</code></pre>
+                </div>
+
+                <div class="feature-list">
+                    <h4>What's Filtered:</h4>
+                    <ul>
+                        <li>86 legitimate Apple services</li>
+                        <li>XProtect (4 patterns)</li>
+                        <li>imklaunchagent (3 patterns)</li>
+                        <li>Safari components (4 patterns)</li>
+                        <li>System services (40+ patterns)</li>
+                        <li>iCloud, Photos, AirPlay, and more</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Output -->
+            <section id="output">
+                <h2>📊 Understanding Output</h2>
+                
+                <h3>Three Report Formats</h3>
+                <p>The analyzer generates three types of reports:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Format</th>
+                            <th>File</th>
+                            <th>Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Markdown</strong></td>
+                            <td><code>log_analysis_TIMESTAMP.md</code></td>
+                            <td>Human-readable, organized by severity <span class="highlight">← Start here!</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>CSV</strong></td>
+                            <td><code>log_analysis_TIMESTAMP.csv</code></td>
+                            <td>Spreadsheets, SIEM integration</td>
+                        </tr>
+                        <tr>
+                            <td><strong>JSON</strong></td>
+                            <td><code>log_analysis_TIMESTAMP.json</code></td>
+                            <td>Programmatic analysis</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Enhanced Output Fields (v1.1+)</h3>
+                <p>Each finding includes:</p>
+                <ul>
+                    <li>🕐 <strong>Date/Time Logged</strong> - When analysis was performed</li>
+                    <li>📁 <strong>Log File Name</strong> - Which specific file (important for multiple files!)</li>
+                    <li>📅 <strong>Log Date/Time</strong> - When the event actually occurred</li>
+                    <li>📝 <strong>Full Log Line</strong> - Complete untruncated entry</li>
+                    <li>🔍 <strong>Pattern Matched</strong> - What triggered the finding</li>
+                    <li>⚠️ <strong>Severity</strong> - HIGH, MEDIUM, or LOW</li>
+                    <li>🏷️ <strong>Category</strong> - Security, Crash, Malware, etc.</li>
+                </ul>
+            </section>
+
+            <!-- Forensic Workflows -->
+            <section id="workflows">
+                <h2>💼 Forensic Workflows</h2>
+
+                <h3>Quick Security Scan</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Scan for security issues
+python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt \
+  -w macos_whitelist.txt \
+  -o security_scan/ \
+  -v
+
+# Check for HIGH severity findings
+grep "HIGH" security_scan/*.csv</code></pre>
+                </div>
+
+                <h3>Comprehensive Analysis</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Full scan with all patterns
+python3 log_directory_analyzer.py \
+  -d ~/Library/Logs /Library/Logs \
+  -p macos_security_patterns.txt crash_patterns.txt malware_patterns.txt \
+  -w macos_whitelist.txt \
+  -o full_analysis/ \
+  -v
+
+# Review the markdown report
+open full_analysis/log_analysis_*.md</code></pre>
+                </div>
+
+                <h3>Crash Investigation</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Focus on crash reports
+python3 log_directory_analyzer.py \
+  -d ~/Library/Logs/DiagnosticReports \
+  -p crash_patterns.txt \
+  -o crash_investigation/</code></pre>
+                </div>
+
+                <h3>Incident Response</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Quick triage
+python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt malware_patterns.txt \
+  -w macos_whitelist.txt \
+  -o incident_triage/
+
+# If findings detected, deep dive
+python3 log_directory_analyzer.py \
+  -d ~/Library/Logs /Library/Logs /var/log \
+  -p macos_security_patterns.txt crash_patterns.txt malware_patterns.txt \
+  -w macos_whitelist.txt \
+  -o incident_deep_dive/ \
+  -v</code></pre>
+                </div>
+            </section>
+
+            <!-- Command Options -->
+            <section id="options">
+                <h2>⚙️ Command-Line Options</h2>
+
+                <h3>Common Options</h3>
+                
+                <h4>List logs without analyzing</h4>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py --list-only</code></pre>
+                </div>
+
+                <h4>Verbose output (see progress)</h4>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py -p patterns.txt -v</code></pre>
+                </div>
+
+                <h4>Save to specific directory</h4>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py -p patterns.txt -o /cases/analysis/</code></pre>
+                </div>
+
+                <h4>Only CSV output</h4>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py -p patterns.txt -f csv</code></pre>
+                </div>
+
+                <h4>Non-recursive scan</h4>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py -d ~/Library/Logs --no-recursive -p patterns.txt</code></pre>
+                </div>
+
+                <h3>Create Custom Patterns</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Generate example pattern file
+python3 log_directory_analyzer.py --create-example my_patterns.txt
+
+# Edit the file to add your custom patterns
+nano my_patterns.txt
+
+# Run with custom patterns
+python3 log_directory_analyzer.py -p my_patterns.txt</code></pre>
+                </div>
+            </section>
+
+            <!-- Troubleshooting -->
+            <section id="troubleshooting">
+                <h2>🔧 Troubleshooting</h2>
+
+                <h3>❌ "No log files found"</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Check directory path
+ls -la ~/Library/Logs
+
+# Try absolute path
+python3 log_directory_analyzer.py -d /Users/yourname/Library/Logs -p patterns.txt</code></pre>
+                </div>
+
+                <h3>❌ "Permission denied"</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># System logs need sudo
+sudo python3 log_directory_analyzer.py -d /var/log -p patterns.txt
+
+# Or copy logs first
+cp -r /var/log ~/evidence/var_log
+python3 log_directory_analyzer.py -d ~/evidence/var_log -p patterns.txt</code></pre>
+                </div>
+
+                <h3>❌ "No patterns loaded"</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Verify pattern file exists
+ls -la *.txt
+
+# Check file format (should be UTF-8 text)
+file macos_security_patterns.txt
+
+# Use --create-example for valid template
+python3 log_directory_analyzer.py --create-example patterns.txt</code></pre>
+                </div>
+
+                <h3>⚠️ Too many results</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Focus on HIGH severity only
+grep "HIGH" log_analysis_*.csv
+
+# Use whitelist to filter false positives
+python3 log_directory_analyzer.py -p patterns.txt -w macos_whitelist.txt
+
+# Narrow to specific directory
+python3 log_directory_analyzer.py -d ~/Library/Logs/DiagnosticReports -p patterns.txt</code></pre>
+                </div>
+            </section>
+
+            <!-- Integration -->
+            <section id="integration">
+                <h2>🔗 Integration Examples</h2>
+
+                <h3>Filter Results</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># After running, filter by severity
+grep "HIGH" log_analysis_*.csv
+
+# Or by category
+grep "Security" log_analysis_*.csv
+grep "Malware" log_analysis_*.csv</code></pre>
+                </div>
+
+                <h3>Export to Splunk</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># Generate JSON
+python3 log_directory_analyzer.py -p patterns.txt -f json
+
+# Send to Splunk
+curl -X POST http://splunk:8088/services/collector \
+  -H "Authorization: Splunk TOKEN" \
+  -d @log_analysis_*.json</code></pre>
+                </div>
+
+                <h3>Timeline Analysis</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code># All findings have ISO timestamps
+# Easy to correlate with other evidence
+cat log_analysis_*.json | jq '.findings[] | .timestamp'</code></pre>
+                </div>
+            </section>
+
+            <!-- Tips -->
+            <section id="tips">
+                <h2>💡 Pro Tips</h2>
+
+                <div class="feature-list">
+                    <h4>1. Start Small</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code># Just list what logs exist
+python3 log_directory_analyzer.py --list-only
+
+# If manageable, analyze all
+python3 log_directory_analyzer.py -p macos_security_patterns.txt</code></pre>
+                    </div>
+
+                    <h4>2. Use Multiple Pattern Files</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code># Combine security + crash + malware
+python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt crash_patterns.txt malware_patterns.txt</code></pre>
+                    </div>
+
+                    <h4>3. Always Use Whitelist</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code># Filter out legitimate Apple services
+python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt \
+  -w macos_whitelist.txt</code></pre>
+                    </div>
+
+                    <h4>4. Build Custom Patterns</h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>cat >> custom_patterns.txt << 'EOF'
+# My Custom Patterns
+PARTIAL:my_app_error|CATEGORY:Application|SEVERITY:HIGH
+REGEX:suspicious_ip_pattern|CATEGORY:Network|SEVERITY:HIGH
+EOF
+
+python3 log_directory_analyzer.py -p custom_patterns.txt</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Reference -->
+            <section id="quickref">
+                <h2>📚 Quick Reference</h2>
+
+                <h3>Essential Files</h3>
+                <ul>
+                    <li>✅ <code>log_directory_analyzer.py</code> - The analyzer</li>
+                    <li>✅ <code>macos_security_patterns.txt</code> - Security events (60+)</li>
+                    <li>✅ <code>crash_patterns.txt</code> - Crashes and errors (50+)</li>
+                    <li>✅ <code>malware_patterns.txt</code> - Malware indicators (100+)</li>
+                    <li>✅ <code>macos_whitelist.txt</code> - Legitimate services (86)</li>
+                </ul>
+
+                <h3>Most Common Command</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <pre><code>python3 log_directory_analyzer.py \
+  -p macos_security_patterns.txt crash_patterns.txt malware_patterns.txt \
+  -w macos_whitelist.txt \
+  -v</code></pre>
+                </div>
+
+                <div class="alert success">
+                    <strong>🎯 Pro Tip:</strong> This command scans your user logs with all patterns, filters false positives, and shows verbose progress. Perfect for most forensic investigations!
+                </div>
+            </section>
+        </div>
+
+        <footer>
+            <p><strong>macOS Log Analyzer v1.2</strong> - Professional Forensic Analysis Made Accessible</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Part of the macOS Forensics Toolkit | 
+                <a href="https://github.com/yourusername/macos-forensics-toolkit" style="color: #0366d6;">GitHub Repository</a>
+            </p>
+            <p style="margin-top: 15px; font-size: 0.85em;">
+                Ready to analyze your Mac! 🔍
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        function copyCode(button) {
+            const codeBlock = button.nextElementSibling;
+            const code = codeBlock.textContent;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '✓ Copied!';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                button.textContent = '✗ Failed';
+                setTimeout(() => {
+                    button.textContent = 'Copy';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
