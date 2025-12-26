@@ -1,0 +1,89 @@
+# Crash and Error Analysis Patterns
+# For analyzing crash reports and system errors
+
+# Crash Indicators
+EXACT:Exception Type:|CATEGORY:Crash|SEVERITY:HIGH|DESC:Application crash with exception
+PARTIAL:segmentation fault|CATEGORY:Crash|SEVERITY:HIGH|DESC:Segmentation fault crash
+PARTIAL:bus error|CATEGORY:Crash|SEVERITY:HIGH|DESC:Bus error
+PARTIAL:abort trap|CATEGORY:Crash|SEVERITY:HIGH|DESC:Abort signal received
+PARTIAL:illegal instruction|CATEGORY:Crash|SEVERITY:HIGH|DESC:Illegal instruction
+
+# Exception Types
+PARTIAL:exc_bad_access|CATEGORY:Crash|SEVERITY:HIGH|DESC:Bad memory access
+PARTIAL:exc_crash|CATEGORY:Crash|SEVERITY:HIGH|DESC:Explicit crash
+PARTIAL:exc_arithmetic|CATEGORY:Crash|SEVERITY:HIGH|DESC:Arithmetic exception
+PARTIAL:exc_bad_instruction|CATEGORY:Crash|SEVERITY:HIGH|DESC:Bad instruction
+
+# Crash Report Headers
+PARTIAL:incident identifier|CATEGORY:Crash|SEVERITY:MEDIUM|DESC:Crash report identifier
+PARTIAL:crashreporter key|CATEGORY:Crash|SEVERITY:MEDIUM|DESC:Crash reporter key
+PARTIAL:process path|CATEGORY:Crash|SEVERITY:LOW|DESC:Crashed process path
+PARTIAL:responsible process|CATEGORY:Crash|SEVERITY:MEDIUM|DESC:Responsible process
+
+# Memory Issues
+PARTIAL:out of memory|CATEGORY:Error|SEVERITY:HIGH|DESC:Out of memory condition
+PARTIAL:memory warning|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Memory warning
+PARTIAL:allocation failed|CATEGORY:Error|SEVERITY:HIGH|DESC:Memory allocation failure
+REGEX:cannot allocate.*memory|CATEGORY:Error|SEVERITY:HIGH|DESC:Memory allocation error
+
+# Kernel Panics
+PARTIAL:kernel panic|CATEGORY:Panic|SEVERITY:HIGH|DESC:Kernel panic detected
+PARTIAL:panic(cpu|CATEGORY:Panic|SEVERITY:HIGH|DESC:CPU panic
+PARTIAL:kernel trap|CATEGORY:Panic|SEVERITY:HIGH|DESC:Kernel trap
+PARTIAL:machine check|CATEGORY:Panic|SEVERITY:HIGH|DESC:Machine check error
+
+# Fatal Errors
+PARTIAL:fatal error|CATEGORY:Error|SEVERITY:HIGH|DESC:Fatal error condition
+PARTIAL:critical error|CATEGORY:Error|SEVERITY:HIGH|DESC:Critical error
+PARTIAL:unrecoverable error|CATEGORY:Error|SEVERITY:HIGH|DESC:Unrecoverable error
+REGEX:error.*terminating|CATEGORY:Error|SEVERITY:HIGH|DESC:Terminating error
+
+# Assertion Failures
+PARTIAL:assertion failed|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Assertion failure
+PARTIAL:precondition failed|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Precondition failure
+REGEX:assert.*failed|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Assert failure
+
+# Thread Issues
+PARTIAL:deadlock|CATEGORY:Error|SEVERITY:HIGH|DESC:Deadlock detected
+PARTIAL:thread crash|CATEGORY:Crash|SEVERITY:HIGH|DESC:Thread crash
+PARTIAL:thread abort|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Thread abort
+REGEX:thread.*exception|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Thread exception
+
+# Stack Traces
+PARTIAL:stack trace|CATEGORY:Diagnostic|SEVERITY:LOW|DESC:Stack trace present
+PARTIAL:backtrace|CATEGORY:Diagnostic|SEVERITY:LOW|DESC:Backtrace present
+PARTIAL:call stack|CATEGORY:Diagnostic|SEVERITY:LOW|DESC:Call stack
+
+# Dylib Issues
+PARTIAL:dyld: library not loaded|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Dynamic library not loaded
+PARTIAL:symbol not found|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Symbol not found
+PARTIAL:image not found|CATEGORY:Error|SEVERITY:MEDIUM|DESC:Image not found
+
+# File System Errors
+PARTIAL:file not found|CATEGORY:Error|SEVERITY:LOW|DESC:File not found
+PARTIAL:no such file|CATEGORY:Error|SEVERITY:LOW|DESC:File does not exist
+PARTIAL:read error|CATEGORY:Error|SEVERITY:MEDIUM|DESC:File read error
+PARTIAL:write error|CATEGORY:Error|SEVERITY:MEDIUM|DESC:File write error
+PARTIAL:disk full|CATEGORY:Error|SEVERITY:HIGH|DESC:Disk full condition
+
+# System Errors
+PARTIAL:system error|CATEGORY:Error|SEVERITY:MEDIUM|DESC:System error
+PARTIAL:kernel error|CATEGORY:Error|SEVERITY:HIGH|DESC:Kernel error
+PARTIAL:hardware error|CATEGORY:Error|SEVERITY:HIGH|DESC:Hardware error
+PARTIAL:i/o error|CATEGORY:Error|SEVERITY:MEDIUM|DESC:I/O error
+
+# Application Hangs
+PARTIAL:application hang|CATEGORY:Performance|SEVERITY:MEDIUM|DESC:Application hang detected
+PARTIAL:not responding|CATEGORY:Performance|SEVERITY:MEDIUM|DESC:Application not responding
+PARTIAL:timeout|CATEGORY:Performance|SEVERITY:LOW|DESC:Timeout occurred
+REGEX:wait.*timeout|CATEGORY:Performance|SEVERITY:LOW|DESC:Wait timeout
+
+# Warnings (Lower Severity)
+PARTIAL:warning:|CATEGORY:Warning|SEVERITY:LOW|DESC:Warning message
+REGEX:^warning|CATEGORY:Warning|SEVERITY:LOW|DESC:Warning line
+PARTIAL:deprecated|CATEGORY:Warning|SEVERITY:LOW|DESC:Deprecated API usage
+
+# Diagnostic Information
+PARTIAL:diagnostic report|CATEGORY:Diagnostic|SEVERITY:LOW|DESC:Diagnostic report header
+PARTIAL:system version|CATEGORY:Diagnostic|SEVERITY:LOW|DESC:System version info
+PARTIAL:hardware model|CATEGORY:Diagnostic|SEVERITY:LOW|DESC:Hardware model info
