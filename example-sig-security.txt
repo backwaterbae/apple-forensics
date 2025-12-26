@@ -1,0 +1,79 @@
+# macOS Security Log Patterns
+# Indicators for authentication, authorization, and security events
+
+# Authentication Failures
+PARTIAL:authentication fail|CATEGORY:Security|SEVERITY:HIGH|DESC:Failed authentication attempt
+PARTIAL:login failed|CATEGORY:Security|SEVERITY:HIGH|DESC:Failed login attempt
+PARTIAL:invalid password|CATEGORY:Security|SEVERITY:HIGH|DESC:Invalid password entry
+PARTIAL:account locked|CATEGORY:Security|SEVERITY:HIGH|DESC:Account lockout
+REGEX:failed.*login.*attempts?|CATEGORY:Security|SEVERITY:HIGH|DESC:Multiple failed login attempts
+
+# Authorization Issues
+PARTIAL:access denied|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Access denied event
+PARTIAL:permission denied|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Permission denied
+PARTIAL:unauthorized|CATEGORY:Security|SEVERITY:HIGH|DESC:Unauthorized access attempt
+PARTIAL:insufficient privileges|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Privilege issue
+
+# Privilege Escalation
+PARTIAL:sudo|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Privilege escalation via sudo
+EXACT:privilege escalation|CATEGORY:Security|SEVERITY:HIGH|DESC:Explicit privilege escalation
+PARTIAL:setuid|CATEGORY:Security|SEVERITY:MEDIUM|DESC:SETUID binary execution
+PARTIAL:root access|CATEGORY:Security|SEVERITY:HIGH|DESC:Root access granted
+
+# Firewall and Network Security
+PARTIAL:firewall blocked|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Firewall blocked connection
+PARTIAL:connection refused|CATEGORY:Security|SEVERITY:LOW|DESC:Connection refused
+PARTIAL:stealth mode|CATEGORY:Security|SEVERITY:LOW|DESC:Firewall stealth mode
+REGEX:blocked.*port|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Port blocked by firewall
+
+# Gatekeeper and Code Signing
+PARTIAL:gatekeeper|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Gatekeeper event
+PARTIAL:code signature invalid|CATEGORY:Security|SEVERITY:HIGH|DESC:Invalid code signature
+PARTIAL:signature verification failed|CATEGORY:Security|SEVERITY:HIGH|DESC:Signature verification failure
+PARTIAL:quarantine|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Quarantine attribute detected
+
+# XProtect and MRT
+PARTIAL:xprotect|CATEGORY:Security|SEVERITY:MEDIUM|DESC:XProtect detection
+PARTIAL:malware detected|CATEGORY:Security|SEVERITY:HIGH|DESC:Malware detection
+PARTIAL:threat detected|CATEGORY:Security|SEVERITY:HIGH|DESC:Threat detected
+PARTIAL:malware removed|CATEGORY:Security|SEVERITY:HIGH|DESC:Malware removal
+
+# System Integrity Protection (SIP)
+PARTIAL:system integrity protection|CATEGORY:Security|SEVERITY:HIGH|DESC:SIP event
+PARTIAL:sip violation|CATEGORY:Security|SEVERITY:HIGH|DESC:SIP violation
+PARTIAL:rootless|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Rootless event
+
+# Keychain Access
+PARTIAL:keychain access|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Keychain access event
+PARTIAL:password retrieved|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Password retrieved from keychain
+PARTIAL:certificate|CATEGORY:Security|SEVERITY:LOW|DESC:Certificate event
+
+# SSH and Remote Access
+PARTIAL:ssh connection|CATEGORY:Security|SEVERITY:MEDIUM|DESC:SSH connection event
+PARTIAL:remote login|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Remote login attempt
+PARTIAL:screen sharing|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Screen sharing event
+PARTIAL:vnc|CATEGORY:Security|SEVERITY:MEDIUM|DESC:VNC connection
+
+# Account Management
+PARTIAL:user created|CATEGORY:Security|SEVERITY:HIGH|DESC:User account created
+PARTIAL:user deleted|CATEGORY:Security|SEVERITY:HIGH|DESC:User account deleted
+PARTIAL:password changed|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Password changed
+PARTIAL:group modified|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Group membership modified
+
+# Suspicious Processes
+PARTIAL:shell script executed|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Shell script execution
+REGEX:bash.*command|CATEGORY:Security|SEVERITY:LOW|DESC:Bash command execution
+PARTIAL:python script|CATEGORY:Security|SEVERITY:LOW|DESC:Python script execution
+PARTIAL:perl script|CATEGORY:Security|SEVERITY:LOW|DESC:Perl script execution
+
+# Security Errors
+PARTIAL:security error|CATEGORY:Security|SEVERITY:HIGH|DESC:Security error
+PARTIAL:crypto error|CATEGORY:Security|SEVERITY:HIGH|DESC:Cryptographic error
+PARTIAL:ssl error|CATEGORY:Security|SEVERITY:MEDIUM|DESC:SSL/TLS error
+PARTIAL:certificate error|CATEGORY:Security|SEVERITY:MEDIUM|DESC:Certificate error
+
+# Privacy
+PARTIAL:location access|CATEGORY:Privacy|SEVERITY:MEDIUM|DESC:Location access request
+PARTIAL:camera access|CATEGORY:Privacy|SEVERITY:MEDIUM|DESC:Camera access request
+PARTIAL:microphone access|CATEGORY:Privacy|SEVERITY:MEDIUM|DESC:Microphone access request
+PARTIAL:contacts access|CATEGORY:Privacy|SEVERITY:MEDIUM|DESC:Contacts access request
