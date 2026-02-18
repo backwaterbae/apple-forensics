@@ -1,0 +1,9 @@
+{
+  "username": "your_twitter_username_or_email",
+  "password": "your_twitter_password",
+  "dry_run": true,
+  "delay_between_deletes": 2,
+  "headless": false,
+  "log_deletions": true,
+  "log_directory": "logs"
+}
