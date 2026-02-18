@@ -1,719 +1,564 @@
 #!/usr/bin/env python3
 """
-Twitter/X DM Conversation Deletion Tool - Selenium Version
-Browser automation version for deleting X.com direct message conversations.
+Twitter/X DM Conversation Deletion Tool - API Version
+Authenticates via OAuth 1.0a (API keys — no username/password stored).
+Uses X API v2 to list DM conversations and v1.1 to delete individual messages.
 
-NOTE: X only allows deleting entire conversations, not individual messages.
-      This tool deletes conversations (threads) from your inbox.
+NOTE: X has no "delete entire conversation" API endpoint.
+      This tool deletes all messages within each conversation,
+      which removes the conversation from your inbox.
+
+NOTE: DM listing endpoints require X API Basic tier ($100/mo) or higher.
+      Message deletion (v1.1) works on Basic tier and above.
+
+Usage:
+    python3 dm_deleter_selenium.py                        # dry run (safe)
+    python3 dm_deleter_selenium.py --execute              # delete all
+    python3 dm_deleter_selenium.py --execute --limit 20   # delete 20 conversations
 
 Author: Digital Forensics Toolkit
+Version: 2.0.0
 License: MIT
 """
 
-import time
-import json
+# Standard library
 import sys
+import json
 import csv
 import hashlib
 import argparse
+import time
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-    ElementClickInterceptedException
+
+# Third-party
+try:
+    import tweepy
+except ImportError:
+    print("✗ tweepy not installed. Run: pip3 install tweepy")
+    sys.exit(1)
+
+# =============================================================================
+# LOGGING SETUP
+# =============================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
 )
+log = logging.getLogger(__name__)
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
 class Config:
-    """Configuration management"""
+    """
+    Load and validate API credentials from config file.
 
-    def __init__(self, config_file='config_dm.json'):
+    Config file format (config_dm.json):
+    {
+        "api_key":             "...",
+        "api_key_secret":      "...",
+        "access_token":        "...",
+        "access_token_secret": "...",
+        "dry_run":             true,
+        "delay_between_deletes": 1.0,
+        "log_deletions":       true,
+        "log_directory":       "logs"
+    }
+
+    Get your keys at: https://developer.twitter.com/en/portal/dashboard
+    Required app permissions: Read + Write + Direct Messages
+    """
+
+    REQUIRED_KEYS = ["api_key", "api_key_secret", "access_token", "access_token_secret"]
+
+    def __init__(self, config_file: str = "config_dm.json"):
         self.config_file = config_file
-        self.load_config()
+        self._load()
 
-    def load_config(self):
-        """Load configuration from file"""
-        if Path(self.config_file).exists():
-            with open(self.config_file, 'r') as f:
-                config = json.load(f)
-                self.username         = config.get('username', '')
-                self.password         = config.get('password', '')
-                self.dry_run          = config.get('dry_run', True)
-                self.delay            = config.get('delay_between_deletes', 2)
-                self.headless         = config.get('headless', False)
-                self.log_deletions    = config.get('log_deletions', True)
-                self.log_dir          = config.get('log_directory', 'logs')
-        else:
-            print(f"⚠ Config file '{self.config_file}' not found")
-            print("Please copy config_dm.example.json to config_dm.json")
+    def _load(self):
+        """Load configuration from JSON file."""
+        path = Path(self.config_file)
+        if not path.exists():
+            print(f"✗ Config file '{self.config_file}' not found.")
+            print("  Copy config_dm.example.json → config_dm.json and add your API keys.")
             sys.exit(1)
+
+        try:
+            with open(path, "r") as f:
+                cfg = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"✗ JSON parse error in {self.config_file}: {e}")
+            print("  Tip: check for smart/curly quotes — run: cat -A config_dm.json")
+            sys.exit(1)
+
+        # Validate required keys
+        missing = [k for k in self.REQUIRED_KEYS if not cfg.get(k)]
+        if missing:
+            print(f"✗ Missing required config keys: {', '.join(missing)}")
+            sys.exit(1)
+
+        self.api_key             = cfg["api_key"]
+        self.api_key_secret      = cfg["api_key_secret"]
+        self.access_token        = cfg["access_token"]
+        self.access_token_secret = cfg["access_token_secret"]
+        self.dry_run             = cfg.get("dry_run", True)
+        self.delay               = float(cfg.get("delay_between_deletes", 1.0))
+        self.log_deletions       = cfg.get("log_deletions", True)
+        self.log_dir             = cfg.get("log_directory", "logs")
+
 
 # =============================================================================
 # FORENSIC LOGGING
 # =============================================================================
 
 class ForensicLogger:
-    """Handles forensic-grade logging with timestamps and hashing"""
+    """
+    Forensic-grade session logging.
 
-    def __init__(self, log_dir='logs'):
+    Produces per-session:
+      dm_deletions_TIMESTAMP.csv    — full audit trail
+      dm_audit_TIMESTAMP.log        — human-readable action log
+      dm_manifest_TIMESTAMP.json    — session metadata
+      dm_deletions_TIMESTAMP.sha256 — log integrity hash
+    """
+
+    def __init__(self, log_dir: str = "logs"):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
 
-        timestamp         = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.deletion_log = self.log_dir / f'dm_deletions_{timestamp}.csv'
-        self.audit_log    = self.log_dir / f'dm_audit_{timestamp}.log'
-        self.manifest     = self.log_dir / f'dm_manifest_{timestamp}.json'
+        ts                = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.deletion_log = self.log_dir / f"dm_deletions_{ts}.csv"
+        self.audit_log    = self.log_dir / f"dm_audit_{ts}.log"
+        self.manifest     = self.log_dir / f"dm_manifest_{ts}.json"
 
-        self._init_csv_log()
+        self._init_csv()
 
         self.manifest_data = {
-            'session_start'          : datetime.now(timezone.utc).isoformat(),
-            'session_id'             : hashlib.sha256(timestamp.encode()).hexdigest()[:16],
-            'method'                 : 'selenium_browser_automation',
-            'target'                 : 'dm_conversations',
-            'conversations_processed': 0,
-            'conversations_deleted'  : 0,
-            'conversations_filtered' : 0,
-            'errors'                 : 0,
-            'filters_applied'        : []
+            "session_start"          : datetime.now(timezone.utc).isoformat(),
+            "session_id"             : hashlib.sha256(ts.encode()).hexdigest()[:16],
+            "method"                 : "x_api_v2_oauth1",
+            "target"                 : "dm_conversations",
+            "conversations_processed": 0,
+            "messages_deleted"       : 0,
+            "conversations_skipped"  : 0,
+            "errors"                 : 0,
+            "filters_applied"        : []
         }
 
-    def _init_csv_log(self):
-        """Initialize CSV log with headers"""
-        with open(self.deletion_log, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'timestamp',
-                'conversation_index',
-                'participant_preview',
-                'preview_text',
-                'preview_hash',
-                'action',
-                'reason'
+    def _init_csv(self):
+        """Write CSV header row."""
+        with open(self.deletion_log, "w", newline="") as f:
+            csv.writer(f).writerow([
+                "timestamp",
+                "conversation_id",
+                "message_id",
+                "sender_id",
+                "created_at",
+                "text_preview",
+                "text_hash",
+                "action",
+                "reason"
             ])
 
-    def log_conversation(self, index, participant, preview, action, reason=''):
-        """Log a conversation action with forensic details"""
-        timestamp    = datetime.now(timezone.utc).isoformat()
-        preview_hash = hashlib.sha256((participant + preview).encode()).hexdigest()
+    def log_message(
+        self,
+        conversation_id: str,
+        message_id: str,
+        sender_id: str,
+        created_at: str,
+        text: str,
+        action: str,
+        reason: str = ""
+    ):
+        """Log a single message action with forensic detail."""
+        ts           = datetime.now(timezone.utc).isoformat()
+        preview      = text[:100] + "..." if len(text) > 100 else text
+        text_hash    = hashlib.sha256(text.encode()).hexdigest()
 
-        with open(self.deletion_log, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                timestamp,
-                index,
-                participant,
-                preview[:100],
-                preview_hash,
-                action,
-                reason
+        with open(self.deletion_log, "a", newline="") as f:
+            csv.writer(f).writerow([
+                ts, conversation_id, message_id, sender_id,
+                created_at, preview, text_hash, action, reason
             ])
 
-        with open(self.audit_log, 'a') as f:
-            f.write(f"[{timestamp}] {action}: [{index}] {participant} - {reason}\n")
+        with open(self.audit_log, "a") as f:
+            f.write(f"[{ts}] {action}: conv={conversation_id} msg={message_id} — {reason}\n")
 
-    def update_manifest(self, key, value):
-        """Update manifest data"""
+    def update_manifest(self, key: str, value):
         self.manifest_data[key] = value
 
     def finalize(self):
-        """Finalize logs and create manifest"""
-        self.manifest_data['session_end'] = datetime.now(timezone.utc).isoformat()
+        """Write manifest and compute log integrity hash."""
+        self.manifest_data["session_end"] = datetime.now(timezone.utc).isoformat()
 
-        with open(self.manifest, 'w') as f:
+        with open(self.manifest, "w") as f:
             json.dump(self.manifest_data, f, indent=2)
 
-        with open(self.deletion_log, 'rb') as f:
+        with open(self.deletion_log, "rb") as f:
             log_hash = hashlib.sha256(f.read()).hexdigest()
 
-        hash_file = self.deletion_log.with_suffix('.sha256')
-        with open(hash_file, 'w') as f:
+        hash_file = self.deletion_log.with_suffix(".sha256")
+        with open(hash_file, "w") as f:
             f.write(f"{log_hash}  {self.deletion_log.name}\n")
 
-        print(f"\n📋 Logs saved to: {self.log_dir}")
-        print(f"   - Deletion log : {self.deletion_log.name}")
-        print(f"   - Audit log    : {self.audit_log.name}")
-        print(f"   - Manifest     : {self.manifest.name}")
-        print(f"   - Hash         : {hash_file.name}")
+        print(f"\n📋 Logs saved to: {self.log_dir}/")
+        print(f"   Deletion log : {self.deletion_log.name}")
+        print(f"   Audit log    : {self.audit_log.name}")
+        print(f"   Manifest     : {self.manifest.name}")
+        print(f"   Hash         : {hash_file.name}")
+
 
 # =============================================================================
 # CONVERSATION FILTERS
 # =============================================================================
 
 class ConversationFilters:
-    """Filter DM conversations based on various criteria"""
+    """Optional filters applied before deletion."""
 
     @staticmethod
-    def by_participant(participant_text, names):
-        """Filter conversations involving specific participants"""
-        if not names:
-            return True
-        participant_lower = participant_text.lower()
-        return any(name.lower() in participant_lower for name in names)
+    def by_participant(participant_ids: list, target_ids: list) -> bool:
+        """
+        Return True if any target user ID appears in this conversation.
 
-    @staticmethod
-    def by_preview_keywords(preview_text, keywords, match_mode='any'):
-        """Filter conversations whose preview contains keywords"""
-        if not keywords:
+        Args:
+            participant_ids: list of user ID strings in the conversation
+            target_ids: user IDs to match against
+
+        Returns:
+            bool: True if conversation includes a target participant
+        """
+        if not target_ids:
             return True
-        preview_lower = preview_text.lower()
-        if match_mode == 'any':
-            return any(kw.lower() in preview_lower for kw in keywords)
-        elif match_mode == 'all':
-            return all(kw.lower() in preview_lower for kw in keywords)
-        return True
+        return any(uid in participant_ids for uid in target_ids)
+
 
 # =============================================================================
-# BROWSER AUTOMATION
+# X API CLIENT
 # =============================================================================
 
-class XBrowser:
-    """Handles X.com browser automation for DM deletion"""
+class XApiClient:
+    """
+    Wraps Tweepy for X API v2 DM operations.
 
-    MESSAGES_URL = "https://x.com/messages"
+    Authentication: OAuth 1.0a (User Context) — required for DM access.
+    Listing:        GET /2/dm_events          — requires Basic tier+
+    Deletion:       DELETE direct_messages/events/destroy (v1.1)
+    """
 
-    def __init__(self, config):
+    def __init__(self, config: Config):
         self.config = config
-        self.driver = None
-        self.wait   = None
+        self.client_v2 = None   # tweepy.Client  (v2 endpoints)
+        self.api_v1    = None   # tweepy.API     (v1.1 endpoints)
+        self.me        = None   # authenticated user object
 
-    def setup_driver(self):
-        """Setup Chrome driver with appropriate options"""
-        print("Setting up browser...")
-
-        options = webdriver.ChromeOptions()
-
-        if self.config.headless:
-            options.add_argument('--headless=new')
-
-        # Anti-detection measures
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument(
-            'user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        )
-
-        try:
-            from selenium.webdriver.chrome.service import Service
-            import shutil
-
-            chromedriver_paths = [
-                '/usr/bin/chromedriver',
-                '/usr/local/bin/chromedriver',
-                shutil.which('chromedriver')
-            ]
-
-            chromedriver_path = None
-            for path in chromedriver_paths:
-                if path and Path(path).exists():
-                    chromedriver_path = path
-                    break
-
-            if chromedriver_path:
-                service     = Service(chromedriver_path)
-                self.driver = webdriver.Chrome(service=service, options=options)
-            else:
-                self.driver = webdriver.Chrome(options=options)
-
-            self.driver.execute_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-            )
-            self.wait = WebDriverWait(self.driver, 10)
-            print("✓ Browser ready")
-            return True
-
-        except Exception as e:
-            print(f"✗ Failed to setup browser: {e}")
-            print("\nMake sure Chrome and chromedriver are installed:")
-            print("  - Kali Linux:  sudo apt-get install chromium chromium-driver")
-            print("  - Ubuntu:      sudo apt install chromium-browser chromium-chromedriver")
-            print("  - macOS:       brew install chromedriver")
-            return False
-
-    def login(self):
-        """Login to X.com"""
-        print("\n" + "=" * 70)
-        print("LOGGING IN TO X.COM")
-        print("=" * 70)
-
-        try:
-            self.driver.get("https://x.com/login")
-            time.sleep(3)
-
-            # Enter username
-            print("Entering username...")
-            username_input = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[autocomplete="username"]'))
-            )
-            username_input.send_keys(self.config.username)
-            username_input.send_keys(Keys.RETURN)
-            time.sleep(2)
-
-            # Check for unusual activity prompt
-            try:
-                self.driver.find_element(By.XPATH, "//*[contains(text(), 'unusual')]")
-                print("\n⚠️  X detected unusual activity")
-                input("Complete the verification in the browser, then press Enter...")
-            except NoSuchElementException:
-                pass
-
-            # Enter password
-            print("Entering password...")
-            password_input = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="password"]'))
-            )
-            password_input.send_keys(self.config.password)
-            password_input.send_keys(Keys.RETURN)
-            time.sleep(3)
-
-            # Handle 2FA
-            try:
-                twofa_input = self.driver.find_element(
-                    By.CSS_SELECTOR, 'input[data-testid="ocfEnterTextTextInput"]'
-                )
-                print("\n🔐 Two-Factor Authentication Required")
-                code = input("Enter your 2FA code: ")
-                twofa_input.send_keys(code)
-                twofa_input.send_keys(Keys.RETURN)
-                time.sleep(3)
-            except NoSuchElementException:
-                pass
-
-            time.sleep(2)
-            if "home" in self.driver.current_url.lower() or "x.com" in self.driver.current_url:
-                print("✓ Login successful!")
-                return True
-            else:
-                print("✗ Login may have failed - check browser")
-                return False
-
-        except Exception as e:
-            print(f"✗ Login error: {e}")
-            return False
-
-    def go_to_messages(self):
-        """Navigate to the Messages inbox"""
-        print("\nNavigating to Messages...")
-        try:
-            self.driver.get(self.MESSAGES_URL)
-            time.sleep(3)
-
-            # Confirm messages loaded
-            self.wait.until(
-                EC.presence_of_element_located((
-                    By.XPATH,
-                    "//div[@data-testid='conversation'] | "
-                    "//section[@role='region'] | "
-                    "//div[contains(@aria-label,'Messages')]"
-                ))
-            )
-            print("✓ Messages loaded")
-            return True
-
-        except TimeoutException:
-            print("⚠️  Could not confirm Messages loaded - proceeding anyway")
-            return True
-        except Exception as e:
-            print(f"✗ Error navigating to Messages: {e}")
-            return False
-
-    def get_visible_conversations(self):
-        """Return all currently visible conversation rows"""
-        selectors = [
-            "div[data-testid='conversation']",
-            "div[role='row']",
-            "li[role='listitem']"
-        ]
-        for selector in selectors:
-            elems = self.driver.find_elements(By.CSS_SELECTOR, selector)
-            if elems:
-                return elems
-        return []
-
-    def extract_conversation_info(self, elem):
-        """Extract participant name and preview text from a conversation element"""
-        participant = "Unknown"
-        preview     = ""
-
-        try:
-            # Participant name - try multiple selectors X has used
-            for sel in [
-                "span[data-testid='User-Name']",
-                "div[dir='ltr'] > span",
-                "span.css-901oao"
-            ]:
-                try:
-                    participant = elem.find_element(By.CSS_SELECTOR, sel).text.strip()
-                    if participant:
-                        break
-                except NoSuchElementException:
-                    continue
-        except Exception:
-            pass
-
-        try:
-            # Message preview text
-            for sel in [
-                "span[data-testid='tweetText']",
-                "div[data-testid='messageEntry']",
-                "div[dir='auto'] span"
-            ]:
-                try:
-                    preview = elem.find_element(By.CSS_SELECTOR, sel).text.strip()
-                    if preview:
-                        break
-                except NoSuchElementException:
-                    continue
-        except Exception:
-            pass
-
-        return participant, preview
-
-    def delete_conversation(self, elem, dry_run=False):
+    def connect(self) -> bool:
         """
-        Delete a single conversation.
-        X requires: right-click (or ···) → 'Delete conversation' → confirm.
-        Returns True on success.
+        Authenticate with X API and verify credentials.
+
+        Returns:
+            bool: True if authentication succeeded
         """
-        if dry_run:
+        print("Connecting to X API...")
+        try:
+            # v2 client — OAuth 1.0a user context
+            self.client_v2 = tweepy.Client(
+                consumer_key        = self.config.api_key,
+                consumer_secret     = self.config.api_key_secret,
+                access_token        = self.config.access_token,
+                access_token_secret = self.config.access_token_secret,
+                wait_on_rate_limit  = True
+            )
+
+            # v1.1 API — needed for message deletion endpoint
+            auth = tweepy.OAuth1UserHandler(
+                consumer_key        = self.config.api_key,
+                consumer_secret     = self.config.api_key_secret,
+                access_token        = self.config.access_token,
+                access_token_secret = self.config.access_token_secret
+            )
+            self.api_v1 = tweepy.API(auth, wait_on_rate_limit=True)
+
+            # Verify credentials
+            me = self.client_v2.get_me()
+            if not me or not me.data:
+                print("✗ Could not retrieve authenticated user. Check your API keys.")
+                return False
+
+            self.me = me.data
+            print(f"✓ Authenticated as @{self.me.username} (ID: {self.me.id})")
             return True
 
-        try:
-            self.driver.execute_script("arguments[0].scrollIntoView(true);", elem)
-            time.sleep(0.3)
-
-            # --- Try right-click context menu first ---
-            ActionChains(self.driver).context_click(elem).perform()
-            time.sleep(0.7)
-
-            # Look for "Delete conversation" in menu
-            delete_option = None
-            for xpath in [
-                "//span[contains(text(), 'Delete conversation')]",
-                "//div[@role='menuitem'][contains(., 'Delete conversation')]",
-                "//a[@role='menuitem'][contains(., 'Delete')]"
-            ]:
-                try:
-                    delete_option = WebDriverWait(self.driver, 3).until(
-                        EC.element_to_be_clickable((By.XPATH, xpath))
-                    )
-                    break
-                except TimeoutException:
-                    continue
-
-            # --- Fallback: look for ··· button inside the row ---
-            if not delete_option:
-                self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-                time.sleep(0.3)
-
-                for sel in [
-                    "[data-testid='dmDrawerHeader'] button",
-                    "[aria-label='More']",
-                    "div[role='button'][aria-haspopup='menu']"
-                ]:
-                    try:
-                        more_btn = elem.find_element(By.CSS_SELECTOR, sel)
-                        self.driver.execute_script("arguments[0].click();", more_btn)
-                        time.sleep(0.5)
-                        break
-                    except NoSuchElementException:
-                        continue
-
-                for xpath in [
-                    "//span[contains(text(), 'Delete conversation')]",
-                    "//div[@role='menuitem'][contains(., 'Delete')]"
-                ]:
-                    try:
-                        delete_option = WebDriverWait(self.driver, 3).until(
-                            EC.element_to_be_clickable((By.XPATH, xpath))
-                        )
-                        break
-                    except TimeoutException:
-                        continue
-
-            if not delete_option:
-                print("  ⚠️  Could not find delete option in menu")
-                self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-                return False
-
-            delete_option.click()
-            time.sleep(0.5)
-
-            # --- Confirm deletion dialog ---
-            for sel in [
-                "[data-testid='confirmationSheetConfirm']",
-                "button[data-testid='confirmationSheetConfirm']"
-            ]:
-                try:
-                    confirm = WebDriverWait(self.driver, 5).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, sel))
-                    )
-                    confirm.click()
-                    time.sleep(1)
-                    return True
-                except TimeoutException:
-                    continue
-
-            # Fallback confirm - find any "Delete" button in a dialog
-            try:
-                confirm = WebDriverWait(self.driver, 5).until(
-                    EC.element_to_be_clickable((
-                        By.XPATH,
-                        "//div[@role='alertdialog']//button[contains(., 'Delete')]"
-                    ))
-                )
-                confirm.click()
-                time.sleep(1)
-                return True
-            except TimeoutException:
-                print("  ⚠️  Confirmation dialog not found")
-                return False
-
+        except tweepy.errors.Unauthorized:
+            print("✗ Authentication failed — check your API keys and tokens.")
+            print("  Make sure your app has 'Read + Write + Direct Messages' permissions.")
+            return False
         except Exception as e:
-            print(f"\n  ⚠️  Error during deletion: {e}")
-            try:
-                self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
-            except Exception:
-                pass
+            print(f"✗ Connection error: {e}")
             return False
 
-    def close(self):
-        """Close the browser"""
-        if self.driver:
-            self.driver.quit()
+    def get_dm_conversations(self) -> list:
+        """
+        Retrieve all DM conversations for the authenticated user.
+
+        Uses GET /2/dm_events (Basic tier required).
+        Returns conversations grouped by dm_conversation_id.
+
+        Returns:
+            list of dicts: [{"id": str, "participant_ids": list, "messages": list}]
+        """
+        print("\nFetching DM conversations...")
+        conversations = {}
+
+        try:
+            paginator = tweepy.Paginator(
+                self.client_v2.get_dm_events,
+                dm_event_fields=["id", "text", "sender_id", "created_at",
+                                 "dm_conversation_id", "participant_ids"],
+                expansions=["sender_id"],
+                max_results=100
+            )
+
+            total = 0
+            for page in paginator:
+                if not page.data:
+                    continue
+                for event in page.data:
+                    cid = event.dm_conversation_id
+                    if cid not in conversations:
+                        conversations[cid] = {
+                            "id"             : cid,
+                            "participant_ids": getattr(event, "participant_ids", []),
+                            "messages"       : []
+                        }
+                    conversations[cid]["messages"].append({
+                        "id"        : event.id,
+                        "text"      : getattr(event, "text", ""),
+                        "sender_id" : str(getattr(event, "sender_id", "")),
+                        "created_at": str(getattr(event, "created_at", ""))
+                    })
+                    total += 1
+                print(f"\r  Retrieved {total} messages across "
+                      f"{len(conversations)} conversations...", end="", flush=True)
+
+            print(f"\n✓ Found {len(conversations)} conversations ({total} total messages)")
+            return list(conversations.values())
+
+        except tweepy.errors.Forbidden as e:
+            print(f"\n✗ 403 Forbidden — DM listing requires X API Basic tier ($100/mo).")
+            print(f"  Details: {e}")
+            return []
+        except tweepy.errors.TooManyRequests:
+            print("\n⚠️  Rate limit hit — tweepy will auto-retry (wait_on_rate_limit=True)")
+            return []
+        except Exception as e:
+            print(f"\n✗ Error fetching conversations: {e}")
+            return []
+
+    def delete_message(self, message_id: str) -> bool:
+        """
+        Delete a single DM message via v1.1 endpoint.
+
+        Uses DELETE direct_messages/events/destroy.
+        Only deletes from YOUR view (X's limitation).
+
+        Args:
+            message_id: ID of the message event to delete
+
+        Returns:
+            bool: True on success
+        """
+        try:
+            self.api_v1.delete_direct_message(message_id)
+            return True
+        except tweepy.errors.NotFound:
+            # Already deleted or never existed
+            return True
+        except tweepy.errors.TooManyRequests:
+            log.warning("Rate limit on delete — waiting 60s...")
+            time.sleep(60)
+            return self.delete_message(message_id)  # retry once
+        except Exception as e:
+            log.error(f"Delete failed for message {message_id}: {e}")
+            return False
+
 
 # =============================================================================
 # DM DELETER
 # =============================================================================
 
-class SeleniumDMDeleter:
-    """Main DM conversation deletion handler"""
+class DMDeleter:
+    """
+    Main orchestrator for DM conversation deletion.
 
-    def __init__(self, config):
+    Workflow:
+        1. Authenticate via OAuth 1.0a
+        2. Fetch all DM conversations via API
+        3. Apply optional filters
+        4. Delete all messages in each target conversation
+        5. Write forensic logs
+    """
+
+    def __init__(self, config: Config):
         self.config          = config
-        self.browser         = XBrowser(config)
+        self.api             = XApiClient(config)
         self.logger          = None
         self.filters_active  = {}
 
-    def get_user_confirmation(self, item_desc):
-        """Get explicit user confirmation before any deletion"""
+    def _confirm(self, description: str) -> bool:
+        """Prompt user for explicit confirmation before destructive action."""
         print(f"\n{'=' * 70}")
-        print(f"⚠  WARNING: About to delete DM conversations - {item_desc}")
+        print(f"⚠  WARNING: About to delete DM conversations — {description}")
         print(f"⚠  This action is PERMANENT and IRREVERSIBLE")
-        print(f"⚠  X deletes the ENTIRE conversation, not individual messages")
+        print(f"⚠  Messages are deleted from YOUR view only (X platform limitation)")
 
         if self.filters_active:
-            print(f"\n   Active filters:")
+            print("\n   Active filters:")
             for name, desc in self.filters_active.items():
                 print(f"   - {name}: {desc}")
 
         print(f"{'=' * 70}\n")
-        response = input("Type 'DELETE ALL' to confirm: ")
-        return response == "DELETE ALL"
+        return input("Type 'DELETE ALL' to confirm: ") == "DELETE ALL"
 
-    def delete_dms(self, dry_run=True, limit=None, participants=None,
-                   keywords=None, keyword_mode='any'):
+    def run(
+        self,
+        dry_run           : bool       = True,
+        limit             : int | None = None,
+        participant_ids   : list       = None,
+    ):
         """
-        Delete DM conversations with optional filtering.
+        Execute DM deletion session.
 
-        Parameters
-        ----------
-        dry_run      : bool   - If True, log only; do not actually delete
-        limit        : int    - Max conversations to delete (None = all)
-        participants : list   - Only delete convos with these participants
-        keywords     : list   - Only delete convos whose preview matches
-        keyword_mode : str    - 'any' or 'all' for keyword matching
+        Args:
+            dry_run         : If True, log only — do not delete anything
+            limit           : Max conversations to process (None = all)
+            participant_ids : Only delete conversations involving these user IDs
         """
 
-        # Initialize logger
+        # Initialize forensic logger
         if self.config.log_deletions:
             self.logger = ForensicLogger(self.config.log_dir)
 
-        # Track active filters
-        if participants:
-            self.filters_active['Participants'] = ', '.join(participants)
+        # Track active filters for logging/display
+        if participant_ids:
+            self.filters_active["Participants"] = ", ".join(participant_ids)
             if self.logger:
-                self.logger.manifest_data['filters_applied'].append(
-                    f"participants: {participants}"
-                )
-        if keywords:
-            self.filters_active['Keywords'] = f"{keyword_mode.upper()}: {', '.join(keywords)}"
-            if self.logger:
-                self.logger.manifest_data['filters_applied'].append(
-                    f"keywords: {keywords} (mode: {keyword_mode})"
+                self.logger.manifest_data["filters_applied"].append(
+                    f"participant_ids: {participant_ids}"
                 )
         if limit:
-            self.filters_active['Limit'] = str(limit)
+            self.filters_active["Limit"] = str(limit)
 
-        # Setup browser
-        if not self.browser.setup_driver():
+        # Authenticate
+        if not self.api.connect():
             return
 
-        # Login
-        if not self.browser.login():
-            print("\n✗ Login failed. Cannot proceed.")
-            self.browser.close()
+        # Fetch conversations
+        conversations = self.api.get_dm_conversations()
+        if not conversations:
+            print("No conversations found or unable to retrieve. Exiting.")
             return
 
-        # Navigate to Messages
-        if not self.browser.go_to_messages():
-            print("\n✗ Could not access Messages. Cannot proceed.")
-            self.browser.close()
-            return
+        # Apply limit
+        target = conversations[:limit] if limit else conversations
+        mode   = "DRY RUN MODE" if dry_run else "🔥 DELETION MODE 🔥"
+        print(f"\n{mode} — {len(target)} conversation(s) to process\n")
 
-        time.sleep(2)
+        # Confirm before real deletion
+        if not dry_run:
+            desc = f"{len(target)} conversation(s)"
+            if not self._confirm(desc):
+                print("\nAborted.")
+                return
 
-        # Dry-run header
-        mode = 'DRY RUN MODE' if dry_run else '🔥 DELETION MODE 🔥'
-        limit_str = str(limit) if limit else 'all'
-        print(f"\n{mode} - Will process up to {limit_str} conversation(s)\n")
+        conv_deleted  = 0
+        conv_skipped  = 0
+        msg_deleted   = 0
+        errors        = 0
 
-        deleted_count  = 0
-        filtered_count = 0
-        error_count    = 0
-        index          = 0
-        consecutive_fails = 0
+        for i, conv in enumerate(target, 1):
+            cid      = conv["id"]
+            msgs     = conv["messages"]
+            p_ids    = conv.get("participant_ids", [])
 
-        while True:
-            # Respect limit
-            if limit and deleted_count >= limit:
-                print(f"\nLimit of {limit} reached.")
-                break
+            # Apply participant filter
+            if participant_ids and not ConversationFilters.by_participant(p_ids, participant_ids):
+                conv_skipped += 1
+                print(f"  ⤷ FILTERED  [{i}] conv={cid} (participant not in filter list)")
+                if self.logger:
+                    for m in msgs:
+                        self.logger.log_message(
+                            cid, m["id"], m["sender_id"], m["created_at"],
+                            m["text"], "FILTERED", "Participant not in filter list"
+                        )
+                continue
 
-            # Grab the current first conversation (list refreshes after each delete)
-            conversations = self.browser.get_visible_conversations()
+            print(f"  Processing [{i}/{len(target)}] conv={cid}  ({len(msgs)} messages)")
 
-            if not conversations:
-                print("\nNo more conversations visible. Done.")
-                break
-
-            elem = conversations[0]
-            index += 1
-
-            try:
-                participant, preview = self.browser.extract_conversation_info(elem)
-                display = f"[{index}] {participant} — {preview[:60]}"
-
-                # Apply filters
-                passes = True
-                reason = ""
-
-                if participants and not ConversationFilters.by_participant(participant, participants):
-                    passes = False
-                    reason = "Participant not in filter list"
-
-                if passes and keywords and not ConversationFilters.by_preview_keywords(
-                        preview, keywords, keyword_mode):
-                    passes = False
-                    reason = "No keyword match in preview"
-
-                if not passes:
-                    filtered_count += 1
-                    print(f"  ⤷ FILTERED  {display}  ({reason})")
-                    if self.logger:
-                        self.logger.log_conversation(index, participant, preview,
-                                                     'FILTERED', reason)
-                    # Scroll past this conversation to expose the next one
-                    self.browser.driver.execute_script(
-                        "arguments[0].scrollIntoView(false);", elem
-                    )
-                    time.sleep(0.5)
-                    # Can't easily skip without clicking - note and break
-                    # Filtering with scroll is tricky; warn user
-                    print("  ⚠️  Skipping filtered conversations requires scrolling - "
-                          "tool will stop here to avoid deleting wrong conversations.")
-                    print("     Re-run with more specific filters or without --participants/--keywords "
-                          "to delete all conversations.")
-                    break
+            conv_success = True
+            for msg in msgs:
+                mid  = msg["id"]
+                text = msg["text"]
+                ts   = msg["created_at"]
+                sid  = msg["sender_id"]
 
                 if dry_run:
-                    print(f"  [DRY RUN] Would delete {display}")
-                    deleted_count += 1
+                    preview = text[:60] + "..." if len(text) > 60 else text
+                    print(f"    [DRY RUN] Would delete msg={mid}: {preview}")
                     if self.logger:
-                        self.logger.log_conversation(index, participant, preview,
-                                                     'DRY_RUN_DELETE', 'Would be deleted')
-                    # In dry run, move past this element by scrolling
-                    self.browser.driver.execute_script(
-                        "arguments[0].scrollIntoView(false);", elem
-                    )
-                    time.sleep(0.3)
-                    # After a few dry-run steps the list won't change; break to avoid loop
-                    if deleted_count >= (limit or 25):
-                        break
-                    continue
-
-                # --- Real deletion ---
-                success = self.browser.delete_conversation(elem, dry_run=False)
-
-                if success:
-                    deleted_count += 1
-                    consecutive_fails = 0
-                    print(f"  ✓ Deleted     {display}")
-                    if self.logger:
-                        self.logger.log_conversation(index, participant, preview,
-                                                     'DELETED', 'Successfully deleted')
-                    time.sleep(self.config.delay)
+                        self.logger.log_message(
+                            cid, mid, sid, ts, text,
+                            "DRY_RUN_DELETE", "Would be deleted"
+                        )
+                    msg_deleted += 1
                 else:
-                    error_count += 1
-                    consecutive_fails += 1
-                    print(f"  ✗ Failed      {display}")
-                    if self.logger:
-                        self.logger.log_conversation(index, participant, preview,
-                                                     'ERROR', 'Deletion failed')
+                    ok = self.api.delete_message(mid)
+                    if ok:
+                        msg_deleted += 1
+                        print(f"    ✓ Deleted msg={mid}")
+                        if self.logger:
+                            self.logger.log_message(
+                                cid, mid, sid, ts, text,
+                                "DELETED", "Successfully deleted"
+                            )
+                    else:
+                        errors     += 1
+                        conv_success = False
+                        print(f"    ✗ Failed  msg={mid}")
+                        if self.logger:
+                            self.logger.log_message(
+                                cid, mid, sid, ts, text,
+                                "ERROR", "Deletion failed"
+                            )
 
-                    if consecutive_fails >= 3:
-                        print("\n  3 consecutive failures — pausing 15s and refreshing...")
-                        time.sleep(15)
-                        self.browser.driver.get(XBrowser.MESSAGES_URL)
-                        time.sleep(3)
-                        consecutive_fails = 0
+                    time.sleep(self.config.delay)
 
-            except StaleElementReferenceException:
-                print(f"  ⚠️  Element went stale, retrying...")
-                time.sleep(1)
-                continue
-            except Exception as e:
-                print(f"\n  ✗ Unexpected error: {e}")
-                error_count += 1
-                consecutive_fails += 1
-                time.sleep(1)
+            if conv_success:
+                conv_deleted += 1
+            print()
 
-        # Close browser
-        self.browser.close()
-
-        # Finalize logging
+        # Finalize
         if self.logger:
-            self.logger.update_manifest('conversations_processed',
-                                        deleted_count + filtered_count + error_count)
-            self.logger.update_manifest('conversations_deleted', deleted_count)
-            self.logger.update_manifest('conversations_filtered', filtered_count)
-            self.logger.update_manifest('errors', error_count)
+            self.logger.update_manifest("conversations_processed", len(target))
+            self.logger.update_manifest("messages_deleted",        msg_deleted)
+            self.logger.update_manifest("conversations_skipped",   conv_skipped)
+            self.logger.update_manifest("errors",                  errors)
             self.logger.finalize()
 
-        # Summary
-        print(f"\n{'=' * 70}")
-        print(f"SUMMARY")
         print(f"{'=' * 70}")
-        print(f"Deleted     : {deleted_count}")
-        print(f"Filtered out: {filtered_count}")
-        print(f"Errors      : {error_count}")
-        print(f"{'=' * 70}\n")
+        print("SUMMARY")
+        print(f"{'=' * 70}")
+        print(f"Conversations processed : {len(target)}")
+        print(f"Conversations completed : {conv_deleted}")
+        print(f"Conversations skipped   : {conv_skipped}")
+        print(f"Messages deleted        : {msg_deleted}")
+        print(f"Errors                  : {errors}")
+        print(f"{'=' * 70}")
+
 
 # =============================================================================
 # COMMAND LINE INTERFACE
@@ -721,51 +566,61 @@ class SeleniumDMDeleter:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Twitter/X DM Conversation Deletion Tool - Selenium Version',
+        description="Twitter/X DM Conversation Deletion Tool — API Version (OAuth 1.0a)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-NOTE:
-  X only lets you delete entire conversations, not individual messages.
+NOTES:
+  - DM listing requires X API Basic tier ($100/mo) or higher
+  - Authentication uses 4 API keys — no username/password stored
+  - X deletes messages from YOUR view only; recipient's copy is unaffected
+  - Get your keys: https://developer.twitter.com/en/portal/dashboard
+    App permissions required: Read + Write + Direct Messages
 
-Examples:
-  # Dry run (safe, default)
+EXAMPLES:
+  # Safe dry run (default) — shows what would be deleted
   python3 dm_deleter_selenium.py
 
-  # Delete all conversations (with confirmation)
+  # Delete all conversations
   python3 dm_deleter_selenium.py --execute
 
-  # Delete only first 20 conversations
-  python3 dm_deleter_selenium.py --execute --limit 20
+  # Delete first 10 conversations only
+  python3 dm_deleter_selenium.py --execute --limit 10
 
-  # Delete conversations with a specific person
-  python3 dm_deleter_selenium.py --execute --participants "John Doe" "@handle"
+  # Delete conversations with specific user IDs only
+  python3 dm_deleter_selenium.py --execute --participant-ids 123456789 987654321
 
-  # Delete conversations whose preview contains keywords
-  python3 dm_deleter_selenium.py --execute --keywords "promo" "discount"
+  # Custom config file
+  python3 dm_deleter_selenium.py --execute --config my_config.json
         """
     )
 
-    parser.add_argument('--config', default='config_dm.json',
-                        help='Config file path (default: config_dm.json)')
-    parser.add_argument('--execute', action='store_true',
-                        help='Actually delete conversations (dry run by default)')
-    parser.add_argument('--limit', type=int, metavar='N',
-                        help='Max number of conversations to delete')
-    parser.add_argument('--participants', nargs='+', metavar='NAME',
-                        help='Only delete conversations with these participant names/handles')
-    parser.add_argument('--keywords', nargs='+', metavar='KEYWORD',
-                        help='Only delete conversations whose preview contains these keywords')
-    parser.add_argument('--keyword-mode', choices=['any', 'all'], default='any',
-                        help='Match ANY or ALL keywords in preview (default: any)')
-    parser.add_argument('--no-log', action='store_true',
-                        help='Disable forensic logging')
+    parser.add_argument(
+        "--config", default="config_dm.json",
+        help="Path to config file (default: config_dm.json)"
+    )
+    parser.add_argument(
+        "--execute", action="store_true",
+        help="Actually delete conversations. Dry run by default."
+    )
+    parser.add_argument(
+        "--limit", type=int, metavar="N",
+        help="Max number of conversations to process"
+    )
+    parser.add_argument(
+        "--participant-ids", nargs="+", metavar="USER_ID",
+        help="Only delete conversations with these X user IDs"
+    )
+    parser.add_argument(
+        "--no-log", action="store_true",
+        help="Disable forensic logging"
+    )
 
     args = parser.parse_args()
 
     print("=" * 70)
-    print("Twitter/X DM Conversation Deletion Tool - Selenium Version")
+    print("Twitter/X DM Conversation Deletion Tool — API Version v2.0.0")
     print("=" * 70)
-    print("⚠  NOTE: X deletes entire conversations, not individual messages")
+    print("Auth: OAuth 1.0a (API keys) — no username/password required")
     print("=" * 70)
 
     config = Config(args.config)
@@ -773,28 +628,18 @@ Examples:
     if args.no_log:
         config.log_deletions = False
 
-    deleter = SeleniumDMDeleter(config)
-
     dry_run = not args.execute or config.dry_run
 
     if dry_run:
-        print("\n⚠ DRY RUN MODE - No conversations will be deleted")
-        print("Use --execute flag to actually delete conversations\n")
+        print("\n⚠  DRY RUN MODE — nothing will be deleted")
+        print("   Use --execute to perform actual deletion\n")
 
-    # Confirmation for real deletions
-    if not dry_run:
-        limit_str = f"up to {args.limit}" if args.limit else "ALL"
-        if not deleter.get_user_confirmation(limit_str):
-            print("\nAborted.")
-            sys.exit(0)
-
-    deleter.delete_dms(
-        dry_run      = dry_run,
-        limit        = args.limit,
-        participants = args.participants,
-        keywords     = args.keywords,
-        keyword_mode = args.keyword_mode
+    DMDeleter(config).run(
+        dry_run         = dry_run,
+        limit           = args.limit,
+        participant_ids = args.participant_ids,
     )
+
 
 if __name__ == "__main__":
     main()
