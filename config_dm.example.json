@@ -1,9 +1,8 @@
 {
-  "username": "your_twitter_username_or_email",
-  "password": "your_twitter_password",
+  "api_key": "...",
+  "api_key_secret": "...", 
+  "access_token": "...",
+  "access_token_secret": "...",
   "dry_run": true,
-  "delay_between_deletes": 2,
-  "headless": false,
-  "log_deletions": true,
-  "log_directory": "logs"
+  "delay_between_deletes": 1
 }
